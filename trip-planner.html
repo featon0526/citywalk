@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行程规划器 · Leaflet + 高德瓦片 + 高德算路</title>
+<style>
+  :root{
+    --bg:#f4f6fb;--card:#fff;--ink:#1f2937;--sub:#64748b;--line:#e5e9f2;
+    --blue:#2563eb;--teal:#0d9488;--amber:#d97706;--red:#e11d48;--soft:#eef2ff;--chip:#f1f5f9;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg);color:var(--ink);line-height:1.55;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 18px 60px}
+  header h1{font-size:25px}
+  header p{color:var(--sub);margin-top:6px;font-size:13.5px}
+  .modebar{margin:14px 0 18px;padding:10px 14px;border-radius:12px;font-size:13px;display:flex;align-items:center;gap:10px}
+  .modebar.demo{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}
+  .modebar.live{background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46}
+  .keycfg{margin:14px 0 18px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden}
+  .kc-head{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:14px;font-weight:600}
+  .kc-toggle{margin-left:auto;background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;color:var(--ink)}
+  .kc-badge{font-size:11.5px;padding:3px 9px;border-radius:999px;font-weight:600}
+  .kc-badge.demo{background:#fee2e2;color:#b91c1c}
+  .kc-badge.ok{background:#dcfce7;color:#166534}
+  .kc-body{padding:4px 14px 14px;display:none}
+  .kc-body.open{display:block}
+  .kc-tip{font-size:12.5px;color:var(--sub);margin:4px 0 6px}
+  .layout{display:grid;grid-template-columns:360px 1fr;gap:18px}
+  @media(max-width:880px){.layout{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h3{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  label{font-size:12.5px;color:var(--sub);display:block;margin:10px 0 4px}
+  input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:13.5px;background:#fff;color:var(--ink)}
+  .row2{display:flex;gap:8px}
+  .row2>*{flex:1}
+  .btn{margin-top:12px;width:100%;background:var(--blue);color:#fff;border:none;padding:11px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
+  .btn.ghost{background:var(--chip);color:var(--ink)}
+  .btn.teal{background:var(--teal)}
+  .poi{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .poi .nm{font-weight:600}
+  .poi .meta{color:var(--sub);font-size:12px}
+  .poi .del{cursor:pointer;color:var(--red);font-size:16px;line-height:1}
+  .mapbox{height:380px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#eaf0f7;position:relative}
+  #leaflet{width:100%;height:100%;display:none}
+  #svgmap{width:100%;height:100%}
+  .maphint{position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.9);border:1px solid var(--line);
+    border-radius:8px;padding:6px 10px;font-size:11.5px;color:var(--sub);max-width:62%}
+  .timeline{margin-top:16px}
+  .tl{display:flex;gap:12px;padding:10px 0;border-bottom:1px dashed var(--line)}
+  .tl .idx{width:26px;height:26px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+  .tl .body{flex:1}
+  .tl .body .t{font-weight:600;font-size:14px}
+  .tl .body .d{color:var(--sub);font-size:12.5px;margin-top:2px}
+  .tl .body .seg{color:var(--teal);font-size:12px;margin-top:3px}
+  .legend{font-size:12px;color:var(--sub);margin-top:10px}
+  details{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12.5px;color:var(--sub)}
+  details summary{cursor:pointer;color:var(--ink);font-weight:600}
+  details ol{margin:8px 0 4px 18px}
+  .warn{color:var(--amber);font-weight:600}
+  .total{margin-top:12px;padding:10px 12px;background:var(--soft);border-radius:10px;font-size:13px}
+  .leaflet-container{font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🧭 行程规划器</h1>
+    <p>架构：<b>高德 Web 服务 API</b> 做地理编码 + 算路（引擎） ＋ <b>Leaflet + 高德瓦片</b> 做显示（画布）。示例模式离线可玩；填 key 后真实算路。</p>
+  </header>
+
+  <div id="modebar" class="modebar demo">⚠️ <b>示例模式</b>：内置西安示例数据，纯前端离线演示。点上方「⚙️ 配置高德 key」填入你的高德 <b>Web 服务</b> key，即切换 Leaflet 真实地图 + 高德算路。</div>
+
+  <div class="keycfg" id="keycfg">
+    <div class="kc-head">⚙️ 高德 key 配置 <span id="kcstatus" class="kc-badge demo">未配置</span>
+      <button class="kc-toggle" id="kctoggle" type="button">展开/收起</button>
+    </div>
+    <div class="kc-body" id="kcbody">
+      <p class="kc-tip">key 与私钥仅保存在<strong>你本机浏览器</strong>（localStorage），不会出现在网页源码 / 公开仓库。首次填一次，之后自动记住。key 类型须为「<b>Web 服务</b>」。</p>
+      <label>高德 Web 服务 Key</label>
+      <input id="kinput" placeholder="粘贴你的高德 Web 服务 key">
+      <label>数字签名私钥（可选，控制台开启签名后填）</label>
+      <input id="sinput" placeholder="粘贴私钥；未开签名可留空">
+      <button class="btn teal" id="kcsave" type="button">💾 保存并启用</button>
+      <button class="btn ghost" id="kcclear" type="button">清除本机配置</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <h3>📍 规划设置</h3>
+      <label>目的地城市（地理编码 / 公交算路用）</label>
+      <input id="city" value="西安" placeholder="如：西安 / 成都 / 东京">
+      <label>交通方式</label>
+      <select id="mode">
+        <option value="driving">🚗 驾车</option>
+        <option value="walking">🚶 步行</option>
+        <option value="transit">🚌 公交</option>
+      </select>
+      <label>添加景点</label>
+      <div class="row2">
+        <input id="pname" placeholder="景点名称">
+        <input id="pstay" placeholder="停留(分)" style="max-width:96px" value="90">
+      </div>
+      <div class="row2" style="margin-top:8px">
+        <select id="pcat">
+          <option>历史古迹</option><option>自然风光</option><option>博物馆</option>
+          <option>美食街区</option><option>现代地标</option><option>其他</option>
+        </select>
+        <button class="btn teal" id="addbtn" style="margin-top:0">+ 加入</button>
+      </div>
+      <div id="poilist"></div>
+      <button class="btn" id="planbtn">▶ 规划行程</button>
+      <button class="btn ghost" id="resetbtn">↺ 恢复示例数据</button>
+      <div class="legend">排序按「最近邻」自动连成顺路；行程从 09:00 起推算时刻。新增景点会自动地理编码定位。</div>
+      <details>
+        <summary>高德 Web 服务 key 怎么申请、接入 & 开数字签名？</summary>
+        <ol>
+          <li>高德开放平台 console.amap.com → 应用管理 → 创建应用 → 添加 key，<b>类型选「Web 服务」</b>。</li>
+          <li>点页面上方「⚙️ 配置高德 key」填入你的 key 并保存（存于本机浏览器 localStorage，源码不留密钥）。</li>
+          <li>刷新：景点按名称地理编码、线路调用高德真实算路，地图用 Leaflet 挂高德瓦片显示（GCJ-02 零偏移）。</li>
+          <li><b>开数字签名（推荐，防 key 被白嫖）</b>：控制台该 key 点「设置」→ 开启数字签名 → 复制显示的「私钥」，在「⚙️ 配置高德 key」的私钥框里填入并保存。开启后本页每次请求自动带 sig。</li>
+        </ol>
+        <p class="warn">① 安全（方案 B·数字签名）：私钥和 key 都仍写在前端，所以是「缓解」——能挡住随便拿 key 去别处调的人，但挡不住懂行、会读源码的人。要真根治请把 key 放后端代理（方案 A）。<br>② 必须配套：填了 <code>AMAP_SIG_SECRET</code> 就<b>必须</b>先在控制台「开启数字签名」，否则高德报 <code>INVALID_USER_SCODE</code>；反过来没填就不能开签名。<br>③ ToS：直接热链高德瓦片做公开产品违反高德条款，可能被限流；公开部署建议换「天地图」官方免费瓦片（需免费 tk）或回归高德 JS API。个人原型无所谓。</p>
+      </details>
+    </div>
+
+    <div>
+      <div class="card">
+        <h3>🗺️ 线路图（Leaflet + 高德瓦片）</h3>
+        <div class="mapbox">
+          <div id="leaflet"></div>
+          <svg id="svgmap" viewBox="0 0 800 380" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="maphint" id="maphint">示例示意地图（非真实瓦片）。填 key 后显示 Leaflet + 高德真实底图。</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <h3>📋 行程单</h3>
+        <div class="timeline" id="timeline"><span style="color:var(--sub);font-size:13px">点「规划行程」生成。</span></div>
+        <div class="total" id="total" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== 配置：key 与私钥从浏览器 localStorage 读取（源码不留密钥，适合部署到公开仓库）======
+   首次打开页面时点「⚙️ 配置高德 key」填入并保存，之后自动记住，源码里永远是空字符串。
+   若你确实想写死明文，把下面两行改成： let AMAP_KEY="你的key"; let AMAP_SIG_SECRET="你的私钥"; */
+const LS_KEY="tripplanner_amap_key", LS_SIG="tripplanner_amap_sig";
+let AMAP_KEY = localStorage.getItem(LS_KEY) || "";
+let AMAP_SIG_SECRET = localStorage.getItem(LS_SIG) || "";
+/* 数字签名私钥：高德控制台「设置→开启数字签名」后显示。留空=不加签名（仅当控制台未开启签名时可用）；
+   填了=每次请求带 sig（需控制台已开启数字签名，否则报 INVALID_USER_SCODE）。
+   注意：key 与私钥仅存于你本地浏览器，公开仓库源码中为零，但仍属「缓解」方案；要真根治请把 key 放后端代理（方案 A）。 */
+/* =================================================================== */
+
+const SPEED = {driving:30, walking:4.8, transit:22};
+const SPEED_LABEL = {driving:"驾车", walking:"步行", transit:"公交"};
+
+/* 数字签名用的 MD5（内嵌，无外部依赖，已用标准向量验证：""/abc/中文/加号 均通过） */
+function md5(msg){
+  function rotl(x,c){return (x<<c)|(x>>>(32-c));}
+  function toBytes(str){
+    const utf8=unescape(encodeURIComponent(str));
+    const bytes=[];
+    for(let i=0;i<utf8.length;i++)bytes.push(utf8.charCodeAt(i)&0xff);
+    return bytes;
+  }
+  const bytes=toBytes(msg);
+  const origLenBits=bytes.length*8;
+  bytes.push(0x80);
+  while(bytes.length%64!==56)bytes.push(0);
+  const lenLo=origLenBits>>>0;
+  const lenHi=Math.floor(origLenBits/0x100000000)>>>0;
+  for(let i=0;i<4;i++)bytes.push((lenLo>>>(8*i))&0xff);
+  for(let i=0;i<4;i++)bytes.push((lenHi>>>(8*i))&0xff);
+
+  let a0=0x67452301,b0=0xefcdab89,c0=0x98badcfe,d0=0x10325476;
+  const s=[7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,
+           5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,
+           4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,
+           6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+  const K=[];
+  for(let i=0;i<64;i++)K[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296)>>>0;
+
+  for(let chunk=0;chunk<bytes.length;chunk+=64){
+    const M=[];
+    for(let i=0;i<16;i++){
+      const j=chunk+i*4;
+      M[i]=(bytes[j]|(bytes[j+1]<<8)|(bytes[j+2]<<16)|(bytes[j+3]<<24))>>>0;
+    }
+    let A=a0,B=b0,C=c0,D=d0;
+    for(let i=0;i<64;i++){
+      let F,g;
+      if(i<16){F=(B&C)|(~B&D);g=i;}
+      else if(i<32){F=(D&B)|(~D&C);g=(5*i+1)%16;}
+      else if(i<48){F=B^C^D;g=(3*i+5)%16;}
+      else{F=C^(B|~D);g=(7*i)%16;}
+      F=(F+A+K[i]+M[g])>>>0;
+      A=D;D=C;C=B;
+      B=(B+rotl(F,s[i]))>>>0;
+    }
+    a0=(a0+A)>>>0;b0=(b0+B)>>>0;c0=(c0+C)>>>0;d0=(d0+D)>>>0;
+  }
+  function hex(n){let s="";for(let i=0;i<4;i++){let x=(n>>>(8*i))&0xff;s+=x.toString(16).padStart(2,"0");}return s;}
+  return hex(a0)+hex(b0)+hex(c0)+hex(d0);
+}
+
+/* 示例：西安 5 景点（GCJ-02 近似坐标，仅示意） */
+const SAMPLE = [
+  {name:"西安钟楼",      cat:"历史古迹", stay:60, lng:108.9540, lat:34.2610},
+  {name:"西安城墙(南门)", cat:"历史古迹", stay:90, lng:108.9470, lat:34.2520},
+  {name:"回民街",        cat:"美食街区", stay:75, lng:108.9510, lat:34.2645},
+  {name:"大雁塔",        cat:"历史古迹", stay:80, lng:108.9646, lat:34.2198},
+  {name:"陕西历史博物馆", cat:"博物馆",   stay:120,lng:108.9606, lat:34.2270}
+];
+let pois = SAMPLE.map(p=>({...p}));
+
+/* ---------- DOM ---------- */
+const $ = id=>document.getElementById(id);
+const modebar=$("modebar");
+
+function renderPoiList(){
+  const el=$("poilist");el.innerHTML="";
+  pois.forEach((p,i)=>{
+    const d=document.createElement("div");d.className="poi";
+    d.innerHTML=`<div><div class="nm">${p.name}</div><div class="meta">${p.cat} · 停留${p.stay}分</div></div><div class="del" data-i="${i}">✕</div>`;
+    d.querySelector(".del").onclick=()=>{pois.splice(i,1);renderPoiList();};
+    el.appendChild(d);
+  });
+}
+$("addbtn").onclick=()=>{
+  const name=$("pname").value.trim();
+  if(!name){alert("先填景点名称");return;}
+  pois.push({name, cat:$("pcat").value, stay:parseInt($("pstay").value)||60, lng:null, lat:null});
+  $("pname").value="";renderPoiList();
+};
+$("resetbtn").onclick=()=>{
+  pois=SAMPLE.map(p=>({...p}));renderPoiList();
+  $("timeline").innerHTML='<span style="color:var(--sub);font-size:13px">点「规划行程」生成。</span>';
+  $("total").style.display="none";
+  if(window.L&&map) drawSVG(null); else drawSVG(null);
+};
+
+/* ---------- 几何 ---------- */
+function haversine(a,b){
+  const R=6371,toR=x=>x*Math.PI/180;
+  const dLat=toR(b.lat-a.lat),dLng=toR(b.lng-a.lng);
+  const s=Math.sin(dLat/2)**2+Math.cos(toR(a.lat))*Math.cos(toR(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function ptsDistKm(pts){ // pts: [[lng,lat],...]
+  let d=0;for(let i=1;i<pts.length;i++)d+=haversine({lng:pts[i-1][0],lat:pts[i-1][1]},{lng:pts[i][0],lat:pts[i][1]});
+  return d;
+}
+function orderNN(list){
+  if(list.length<=2)return list.slice();
+  const rest=list.slice(1),route=[list[0]];let cur=list[0];
+  while(rest.length){
+    let bi=0,bd=Infinity;
+    rest.forEach((p,i)=>{const d=haversine(cur,p);if(d<bd){bd=d;bi=i;}});
+    cur=rest.splice(bi,1)[0];route.push(cur);
+  }
+  return route;
+}
+function estimate(a,b,mode){
+  const d=haversine(a,b);let t=d/SPEED[mode];
+  if(mode==="transit")t+=0.12; if(mode==="walking")t+=0.05;
+  return {dist:d,mins:Math.round(t*60)};
+}
+function fmt(d){return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
+
+/* ---------- 示例模式（离线） ---------- */
+function buildPlan(){
+  if(pois.length<1){alert("先加至少一个景点");return;}
+  const ordered=orderNN(pois),mode=$("mode").value;
+  let t=new Date();t.setHours(9,0,0,0);let html="",totalDist=0,totalMin=0;
+  ordered.forEach((p,i)=>{
+    const arrive=new Date(t),leave=new Date(t.getTime()+p.stay*60000);
+    html+=`<div class="tl"><div class="idx">${i+1}</div><div class="body"><div class="t">${p.name} <span style="font-weight:400;color:var(--sub)">· ${p.cat}</span></div><div class="d">到达 ${fmt(arrive)} ｜ 游玩约 ${p.stay} 分 ｜ 离开 ${fmt(leave)}</div>`;
+    if(i<ordered.length-1){
+      const seg=estimate(p,ordered[i+1],mode);totalDist+=seg.dist;totalMin+=seg.mins+p.stay;
+      html+=`<div class="seg">↓ ${SPEED_LABEL[mode]} 至下一站：约 ${seg.dist.toFixed(1)} km / ${seg.mins} 分（估算）</div>`;
+      t=new Date(leave.getTime()+seg.mins*60000);
+    }else totalMin+=p.stay;
+    html+=`</div></div>`;
+  });
+  $("timeline").innerHTML=html;
+  $("total").style.display="block";
+  $("total").innerHTML=`📊 共 ${ordered.length} 个景点 ｜ ${SPEED_LABEL[mode]}总移动约 <b>${totalDist.toFixed(1)} km</b> ｜ 全程约 <b>${Math.floor(totalMin/60)} 小时 ${totalMin%60} 分</b>（含游玩，估算）`;
+  drawSVG(ordered);
+}
+function drawSVG(ordered){
+  const svg=$("svgmap");
+  if(!ordered){svg.innerHTML='<text x="400" y="190" text-anchor="middle" fill="#94a3b8" font-size="15">添加景点后点「规划行程」</text>';return;}
+  const lngs=ordered.map(p=>p.lng),lats=ordered.map(p=>p.lat);
+  const minX=Math.min(...lngs),maxX=Math.max(...lngs),minY=Math.min(...lats),maxY=Math.max(...lats);
+  const pad=60,W=800,H=380;
+  const sx=x=>pad+(x-minX)/((maxX-minX)||1)*(W-2*pad);
+  const sy=y=>H-pad-(y-minY)/((maxY-minY)||1)*(H-2*pad);
+  let s='<rect width="800" height="380" fill="#eaf0f7"/><text x="14" y="22" fill="#94a3b8" font-size="12">示意地图（坐标线性投影，非真实瓦片）</text>';
+  const pts=ordered.map(p=>`${sx(p.lng).toFixed(1)},${sy(p.lat).toFixed(1)}`).join(" ");
+  s+=`<polyline points="${pts}" fill="none" stroke="#2563eb" stroke-width="3" stroke-dasharray="7 5" opacity=".8"/>`;
+  ordered.forEach((p,i)=>{
+    const x=sx(p.lng),y=sy(p.lat),fill=i===0?"#16a34a":"#2563eb";
+    s+=`<circle cx="${x}" cy="${y}" r="9" fill="${fill}" stroke="#fff" stroke-width="2"/>`;
+    s+=`<text x="${x+12}" y="${y+4}" font-size="12" fill="#1f2937" font-weight="600">${i+1}. ${p.name}</text>`;
+  });
+  svg.innerHTML=s;
+}
+
+/* ---------- 真实模式：Leaflet + 高德 Web 服务 ---------- */
+let map=null;
+function loadLeaflet(cb){
+  if(window.L&&window.L.polylineDecorator){cb();return;}
+  const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
+  const s=document.createElement('script');
+  s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  s.onload=()=>{
+    const d=document.createElement('script');
+    d.src='https://cdn.jsdelivr.net/npm/leaflet-polylinedecorator@1.6.0/dist/leaflet-polylinedecorator.js';
+    d.onload=cb; d.onerror=cb; // 装饰器失败也不阻断主流程
+    document.head.appendChild(d);
+  };
+  s.onerror=()=>alert('Leaflet 加载失败，请检查网络');document.head.appendChild(s);
+}
+function startLive(){
+  modebar.className="modebar live";
+  modebar.innerHTML="✅ <b>真实模式</b>：Leaflet + 高德瓦片显示，线路/定位来自高德 Web 服务真实算路。";
+  $("maphint").style.display="none";$("svgmap").style.display="none";$("leaflet").style.display="block";
+  if(!map){
+    map=L.map("leaflet",{zoom:12,attributionControl:true}).setView([34.265,108.95]);
+    L.tileLayer('https://wprd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}',
+      {subdomains:'1234',maxZoom:18,attribution:'© 高德地图'}).addTo(map);
+  }
+}
+function showDemo(){
+  const mb=$("modebar");
+  mb.className="modebar demo";
+  mb.innerHTML='⚠️ <b>示例模式</b>：内置西安示例数据，纯前端离线演示。点上方「⚙️ 配置高德 key」填入你的高德 <b>Web 服务</b> key，即切换 Leaflet 真实地图 + 高德算路。';
+  $("maphint").style.display="block";$("svgmap").style.display="block";$("leaflet").style.display="none";
+  drawSVG(null);
+}
+/* 高德 Web 服务无 CORS → 用 JSONP 跨域。数字签名：参数按名升序拼 key=value，末尾直接追加快照私钥，MD5 → sig（与官方算法一致） */
+function buildAmapURL(base, params){
+  const cb='jp_'+Math.random().toString(36).slice(2);
+  const all=Object.assign({}, params, {callback: cb});
+  const keys=Object.keys(all).filter(k=>k!=='sig').sort(); // 参数名 ASCII 升序
+  let q=keys.map(k=>`${encodeURIComponent(k)}=${encodeURIComponent(all[k])}`).join('&');
+  if(AMAP_SIG_SECRET){
+    const signStr=keys.map(k=>`${k}=${all[k]}`).join('&') + AMAP_SIG_SECRET; // 原始值（UTF-8）+ 私钥，无分隔符
+    q+='&sig='+md5(signStr);
+  }
+  return {url: base + '?' + q, cb};
+}
+function jsonp(base, params){
+  return new Promise((resolve,reject)=>{
+    let built;
+    try{ built=buildAmapURL(base, params); }
+    catch(e){ reject(e); return; }
+    const s=document.createElement('script');
+    s.src=built.url;
+    window[built.cb]=d=>{document.head.removeChild(s);delete window[built.cb];resolve(d);};
+    s.onerror=()=>{document.head.removeChild(s);delete window[built.cb];reject(new Error('请求失败（请检查网络 / key / 签名开关是否配套）'));};
+    document.head.appendChild(s);
+  });
+}
+async function geocode(name,city){
+  const d=await jsonp('https://restapi.amap.com/v3/geocode/geo',
+    {key:AMAP_KEY, address:name, city:city, output:'JSON'});
+  if(d.status==='1'&&d.geocodes&&d.geocodes.length){
+    const [lng,lat]=d.geocodes[0].location.split(',').map(Number);return {lng,lat};
+  }
+  throw new Error('地理编码失败: '+name);
+}
+async function routeAPI(a,b,mode,city){
+  const ep=mode==='walking'?'walking':mode==='transit'?'transit/integration':'driving';
+  const params={key:AMAP_KEY, origin:`${a.lng},${a.lat}`, destination:`${b.lng},${b.lat}`, output:'JSON', extensions:'base'};
+  if(mode==='transit'){ params.city=city; params.cityd=city; }
+  return jsonp('https://restapi.amap.com/v3/direction/'+ep, params);
+}
+function parsePoly(s){return s.split(';').map(p=>{const [x,y]=p.split(',').map(Number);return [x,y];});}
+function extractRoute(d,mode){
+  try{
+    if(mode==='transit'){
+      const tr=d.route.transits[0],segs=tr.segments;let pts=[];
+      segs.forEach(s=>{
+        if(s.walking&&s.walking.steps)s.walking.steps.forEach(st=>{if(st.polyline)pts=pts.concat(parsePoly(st.polyline));});
+        if(s.bus&&s.bus.buslines)s.bus.buslines.forEach(bl=>{if(bl.polyline)pts=pts.concat(parsePoly(bl.polyline));});
+      });
+      const dur=tr.cost&&tr.cost.duration?Math.round(tr.cost.duration/60):null;
+      return {pts,distKm:ptsDistKm(pts),mins:dur};
+    }else{
+      const path=d.route.paths[0];let pts=[];
+      path.steps.forEach(st=>{if(st.polyline)pts=pts.concat(parsePoly(st.polyline));});
+      return {pts,distKm:parseInt(path.distance)/1000,mins:Math.round(parseInt(path.duration)/60)};
+    }
+  }catch(e){return {pts:[],distKm:0,mins:0};}
+}
+function numIcon(n,first){
+  return L.divIcon({className:'',html:`<div style="background:${first?'#16a34a':'#2563eb'};color:#fff;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.3)">${n}</div>`,iconSize:[24,24],iconAnchor:[12,12]});
+}
+async function buildPlanLive(){
+  if(!map){return;}
+  if(pois.length<1){alert("先加景点");return;}
+  const mode=$("mode").value,city=$("city").value||"全国";
+  $("timeline").innerHTML='<span style="color:var(--sub);font-size:13px">地理编码 + 调用高德算路中…</span>';
+  // 地理编码：仅对没有坐标的新增景点
+  for(const p of pois){
+    if(p.lng==null){
+      try{const g=await geocode(p.name,city);p.lng=g.lng;p.lat=g.lat;}
+      catch(e){alert(e.message+'（请检查 key 或网络）');return;}
+    }
+  }
+  const ordered=orderNN(pois);
+  // 清掉旧标记/旧线（保留底图瓦片）
+  map.eachLayer(l=>{ if(!(l instanceof L.TileLayer)) map.removeLayer(l); });
+  let t=new Date();t.setHours(9,0,0,0);let html="",totalDist=0,totalMin=0,grp=[];
+  const allLatLngs=[]; // 贯穿全程的有序坐标
+  for(let i=0;i<ordered.length;i++){
+    const p=ordered[i];
+    L.marker([p.lat,p.lng],{icon:numIcon(i+1,i===0)}).addTo(map).bindPopup(`<b>${i+1}. ${p.name}</b><br>${p.cat} · 建议停留${p.stay}分`);
+    grp.push([p.lat,p.lng]);
+    if(i===0)allLatLngs.push([p.lat,p.lng]); // 起点
+    const arrive=new Date(t),leave=new Date(t.getTime()+p.stay*60000);
+    html+=`<div class="tl"><div class="idx">${i+1}</div><div class="body"><div class="t">${p.name} <span style="font-weight:400;color:var(--sub)">· ${p.cat}</span></div><div class="d">到达 ${fmt(arrive)} ｜ 游玩约 ${p.stay} 分 ｜ 离开 ${fmt(leave)}</div>`;
+    if(i<ordered.length-1){
+      const nxt=ordered[i+1];let r;
+      try{r=extractRoute(await routeAPI(p,nxt,mode,city),mode);}catch(e){r={pts:[],distKm:0,mins:0};}
+      const distKm=r.distKm||estimate(p,nxt,mode).dist;
+      const mins=r.mins||estimate(p,nxt,mode).mins;
+      totalDist+=distKm;totalMin+=mins+p.stay;
+      if(r.pts.length>1){
+        const ll=r.pts.map(([x,y])=>[y,x]);
+        for(let k=1;k<ll.length;k++){ allLatLngs.push(ll[k]); grp.push(ll[k]); } // 跳过 ll[0]（=当前点已加入）
+      }
+      html+=`<div class="seg">↓ ${SPEED_LABEL[mode]} 至下一站：约 ${distKm.toFixed(1)} km / ${mins} 分（高德真实算路）</div></div>`;
+      t=new Date(leave.getTime()+mins*60000);
+    }else{totalMin+=p.stay;html+=`</div></div>`;}
+  }
+  // 画一条贯穿全程的有向路线 + 方向箭头
+  if(allLatLngs.length>1){
+    const routeLine=L.polyline(allLatLngs,{color:'#2563eb',weight:5,opacity:.9}).addTo(map);
+    if(window.L.polylineDecorator){
+      L.polylineDecorator(routeLine,{patterns:[{offset:'8%',repeat:'90px',
+        symbol:L.Symbol.arrowHead({pixelSize:13,polygon:false,pathOptions:{stroke:true,color:'#1d4ed8',weight:3,opacity:1}})}]}).addTo(map);
+    }
+  }
+  $("timeline").innerHTML=html;
+  $("total").style.display="block";
+  $("total").innerHTML=`📊 共 ${ordered.length} 个景点 ｜ ${SPEED_LABEL[mode]}真实算路 ｜ 全程约 <b>${Math.floor(totalMin/60)} 小时 ${totalMin%60} 分</b>（含游玩）｜ 蓝线箭头 = 游览顺序`;
+  if(grp.length)map.fitBounds(grp,{padding:[40,40]});
+}
+
+/* ---------- 入口 ---------- */
+$("planbtn").onclick=()=>{ if(AMAP_KEY&&map) buildPlanLive(); else if(AMAP_KEY){ loadLeaflet(()=>{startLive();buildPlanLive();}); } else buildPlan(); };
+renderPoiList();
+function applyKeyStatus(){
+  const badge=$("kcstatus");
+  if(AMAP_KEY){ badge.textContent="已配置"; badge.className="kc-badge ok"; }
+  else { badge.textContent="未配置"; badge.className="kc-badge demo"; }
+}
+function saveKeys(){
+  const k=$("kinput").value.trim(), s=$("sinput").value.trim();
+  if(!k){ alert("请先粘贴高德 Web 服务 key"); return; }
+  AMAP_KEY=k; AMAP_SIG_SECRET=s;
+  localStorage.setItem(LS_KEY,k);
+  if(s) localStorage.setItem(LS_SIG,s); else localStorage.removeItem(LS_SIG);
+  applyKeyStatus();
+  if(map){ startLive(); } else { loadLeaflet(startLive); }
+  alert("已保存（仅存于本机浏览器）。现在点「▶ 规划行程」即可真实算路。");
+}
+function clearKeys(){
+  AMAP_KEY=""; AMAP_SIG_SECRET="";
+  localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_SIG);
+  applyKeyStatus(); showDemo();
+}
+$("kcsave").onclick=saveKeys;
+$("kcclear").onclick=clearKeys;
+$("kctoggle").onclick=()=>$("kcbody").classList.toggle("open");
+if(AMAP_KEY){ $("kinput").value=AMAP_KEY; $("sinput").value=AMAP_SIG_SECRET; }
+applyKeyStatus();
+if(!AMAP_KEY) $("kcbody").classList.add("open");
+if(AMAP_KEY){ loadLeaflet(startLive); } else { showDemo(); }
+</script>
+</body>
+</html>
